@@ -77,7 +77,7 @@ with ThreadPoolExecutor(max_workers=10) as executor:
 # -----------------------------------------------------------------------------
 import csv
 
-with open('Commons_1861-1870.csv', 'w', newline='', encoding = 'utf-8') as f:
+with open('outputs/Commons_1861-1870.csv', 'w', newline='', encoding = 'utf-8') as f:
      writer = csv.writer(f)
      writer.writerow(['Date', "Title", 'Content'])
      for year in range(start_year, end_year + 1):
@@ -87,3 +87,4 @@ with open('Commons_1861-1870.csv', 'w', newline='', encoding = 'utf-8') as f:
                     if specific_date in content_dict:
                         for title, text in content_dict[specific_date].items(): 
                             writer.writerow([specific_date, title ,text])
+# %%
