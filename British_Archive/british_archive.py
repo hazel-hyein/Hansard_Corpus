@@ -9,7 +9,8 @@ __version__ = "0.1"
 
 # %% --------------------------------------------------------------------------
 # Import Modules
-
+import time
+import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -18,7 +19,15 @@ from selenium.webdriver.support import expected_conditions as EC
 import chromedriver_autoinstaller
 
 
-def login_to_bna(driver, email, password):
+def login_to_bna(driver: webdriver.Chrome, email: str, password: str) -> None:
+    """
+    Log in to the British Newspaper Archive website.
+
+    Args:
+        driver: The Selenium WebDriver instance
+        email: The email address for the account
+        password: The password for the account
+    """
     try:
         # Navigate to login page
         driver.get("https://www.britishnewspaperarchive.co.uk/account/login")
@@ -70,13 +79,22 @@ def login_to_bna(driver, email, password):
         print(f"An error occurred during login: {str(e)}")
 
 
-def select_article_by_keyword(driver, keyword):
+def select_article_by_keyword(driver: webdriver.Chrome, keyword: str) -> str:
+    """
+    Find an article containing the specified keyword and click on it.
+
+    Args:
+        driver: The Selenium WebDriver instance
+        keyword: The keyword to search for in the article titles
+
+    Returns:
+        The title of the article that was clicked, or False if no article was found    
+    """
     try:
         # Wait for the list of articles to be present
-        article_list = WebDriverWait(driver, 5).until(
+        article_list = WebDriverWait(driver, 10).until(
             EC.presence_of_all_elements_located((By.CSS_SELECTOR, "#allItems a"))
         )
-        print(f"Found {len(article_list)} articles")
 
         # Loop through the articles and find one containing the keyword
         for article in article_list:
@@ -94,15 +112,32 @@ def select_article_by_keyword(driver, keyword):
         return False
 
 
-def extract_article_text(url, email, password, keyword="exhibition"):
+def extract_article_text(
+    df: pd.DataFrame, email: str, password: str, keyword: str = "exhibition"
+) -> pd.DataFrame:
+    """
+    Extract the OCR text from the specified articles in the DataFrame.
+
+    Args:
+        df: The DataFrame containing the article URLs
+        email: The email address for the British Newspaper Archive account
+        password: The password for the British Newspaper Archive account
+        keyword: The keyword to search for in the article titles
+
+    Returns:
+        A new DataFrame with the extracted article text appended as a new column
+    """
+    # Set up the Chrome WebDriver
     chrome_options = Options()
     # chrome_options.add_argument("--headless")  # Comment this out for debugging
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
-
     chromedriver_autoinstaller.install()  # Install the correct version of ChromeDriver
-
     driver = webdriver.Chrome(options=chrome_options)
+
+    # Extract the URLs from the DataFrame
+    url_df = df["url"]
+    rows = []
 
     try:
         print(f"Chrome version: {driver.capabilities['browserVersion']}")
@@ -113,31 +148,38 @@ def extract_article_text(url, email, password, keyword="exhibition"):
         # Log in to the British Newspaper Archive
         login_to_bna(driver, email, password)
 
-        # Navigate to the article page
-        driver.get(url)
-        print("Navigated to article page")
+        for url in url_df:
+            # Navigate to the article page
+            driver.get(url)
 
-        # Select the article containing the keyword
-        article_title = select_article_by_keyword(driver, keyword)
-        if not article_title:
-            return None
+            # Select the article containing the keyword
+            article_title = select_article_by_keyword(driver, keyword)
+            if not article_title:
+                rows.append({"article_text": None})
 
-        # Wait for the "Show Article Text" button to be clickable and click it
-        show_article_text_button = WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.ID, "copyOcr"))
-        )
-        show_article_text_button.click()
-        print("Clicked 'Show Article Text' button")
+            # wait 3 seconds for the OCR text to load
+            time.sleep(2)
 
-        # Wait for the OCR text to appear
-        ocr_text = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.ID, "ocr"))
-        )
+            # Wait for the "Show Article Text" button to be clickable and click it
+            show_article_text_button = WebDriverWait(driver, 20).until(
+                EC.element_to_be_clickable((By.ID, "copyOcr"))
+            )
+            show_article_text_button.click()
 
-        # Extract the text from the OCR div
-        article_text = ocr_text.text
+            # Wait for the OCR text to appear
+            ocr_text = WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.ID, "ocr"))
+            )
 
-        return article_title, article_text
+            # Extract the text from the OCR div
+            article_text = ocr_text.text
+
+            # Append the article title and text to the rows list
+            rows.append({"article_text": article_text})
+
+        final_df = df.copy()
+        final_df["article_text"] = pd.DataFrame(rows)["article_text"]
+        return final_df
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
@@ -147,28 +189,16 @@ def extract_article_text(url, email, password, keyword="exhibition"):
         driver.quit()
 
 
-# TODO: Change script to run for a series of URLs and merge into a single dataframe
 # Usage
-url = "https://www.britishnewspaperarchive.co.uk/viewer/bl/0000252/18510426/052/0006"
-email = ## YOUR EMAIL HERE ##
-password = ## YOUR PASSWORD HERE ##
-article_title, article_text = extract_article_text(url, email, password)
-print(article_text if article_text else "Failed to extract article text")
+df = pd.read_csv("British_Archive/search_results.csv")
+email = # Enter your email here
+password = # Enter your password here
+extracted_text_df = extract_article_text(
+    df[0:10], email, password
+)  # Only 10 rows for testing
 
 
 # %%
-# create and save to json
-import json
-
-data = {
-    "article_title": article_title,
-    "article_text": article_text,
-}
-
-with open("article_data.json", "w") as f:
-    json.dump(data, f, indent=4)
-
-print("Data saved to 'article_data.json'")
-
-
+# Save the extracted text to a CSV file
+extracted_text_df.to_csv("British_Archive/extracted_text.csv", index=False)
 # %%
