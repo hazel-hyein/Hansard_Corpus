@@ -100,7 +100,6 @@ def select_article_by_keyword(driver: webdriver.Chrome, keyword: str) -> str:
         for article in article_list:
             article_title = article.text
             if keyword.lower() in article_title.lower():
-                print(f"Article found with keyword '{keyword}': {article_title}")
                 article.click()
                 return article_title
 
@@ -113,7 +112,7 @@ def select_article_by_keyword(driver: webdriver.Chrome, keyword: str) -> str:
 
 
 def extract_article_text(
-    df: pd.DataFrame, email: str, password: str, keyword: str = "exhibition"
+    df: pd.DataFrame, email: str, password: str, keyword: str = "exhibit"
 ) -> pd.DataFrame:
     """
     Extract the OCR text from the specified articles in the DataFrame.
@@ -129,7 +128,7 @@ def extract_article_text(
     """
     # Set up the Chrome WebDriver
     chrome_options = Options()
-    # chrome_options.add_argument("--headless")  # Comment this out for debugging
+    chrome_options.add_argument("--headless")  # Comment this out for debugging
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chromedriver_autoinstaller.install()  # Install the correct version of ChromeDriver
@@ -156,6 +155,7 @@ def extract_article_text(
             article_title = select_article_by_keyword(driver, keyword)
             if not article_title:
                 rows.append({"article_text": None})
+                continue
 
             # wait 3 seconds for the OCR text to load
             time.sleep(2)
@@ -165,25 +165,28 @@ def extract_article_text(
                 EC.element_to_be_clickable((By.ID, "copyOcr"))
             )
             show_article_text_button.click()
+            time.sleep(1)
 
             # Wait for the OCR text to appear
-            ocr_text = WebDriverWait(driver, 20).until(
+            ocr_text_div = WebDriverWait(driver, 20).until(
                 EC.presence_of_element_located((By.ID, "ocr"))
             )
-
-            # Extract the text from the OCR div
-            article_text = ocr_text.text
-
+            # Check if the OCR text div contains any text
+            ocr_text = ocr_text_div.text
             # Append the article title and text to the rows list
-            rows.append({"article_text": article_text})
+            rows.append({"article_text": ocr_text})
 
         final_df = df.copy()
-        final_df["article_text"] = pd.DataFrame(rows)["article_text"]
+        rows_df = pd.DataFrame(rows, index=final_df.index)
+        final_df["article_text"] = rows_df["article_text"]
         return final_df
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
-        return None
+        final_df = df.copy()
+        rows_df = pd.DataFrame(rows, index=final_df.index)
+        final_df["article_text"] = rows_df["article_text"]
+        return final_df
 
     finally:
         driver.quit()
@@ -191,14 +194,15 @@ def extract_article_text(
 
 # Usage
 df = pd.read_csv("British_Archive/search_results.csv")
-email = # Enter your email here
-password = # Enter your password here
+email = "nedeeshaw@virginmedia.com"
+password = ######
 extracted_text_df = extract_article_text(
-    df[0:10], email, password
+    df[471:1000], email, password
 )  # Only 10 rows for testing
 
 
 # %%
 # Save the extracted text to a CSV file
-extracted_text_df.to_csv("British_Archive/extracted_text.csv", index=False)
+extracted_text_df.to_csv("British_Archive/extracted_text_493.csv", index=False)
+
 # %%
